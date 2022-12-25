@@ -135,10 +135,10 @@ Function Get-TeamsChatMember
 
 <#
  .Synopsis
-  Migration of messages from Microsoft Teams to Markdown file.
+  Save messages and their contents from Microsoft Teams chat to a local markdown file.
 
  .Description
-  Migration of messages with all their contents from source Microsoft Teams chat to target Markdown file.
+  Save messages and their contents from Microsoft Teams chat to a local markdown file.
 
  .Parameter TeamsTenantId
   Microsoft Teams Tenant ID (for example : "b33cbe9f-8ebe-4f2a-912b-7e2a427f477f").
@@ -156,7 +156,7 @@ Function Get-TeamsChatMember
   Markdown file name (store in DownloadDir).
   
  .Parameter DownloadDir
-  Directory path for storing files downloaded from Teams (for example : "d:\teams_to_zulip\download").
+  Directory path for storing files downloaded from Teams (for example : "d:\t2md\download").
   
  .Parameter TrIDPathDir
   The catalog in which the program TrID (C) 2003-16 By Marco Pontello (https://mark0.net/soft-trid-e.html) is located (for example : "d:\teams_to_zulip\trid").
@@ -166,15 +166,11 @@ Function Get-TeamsChatMember
 
  .Example
   $ConvertArgs = @{
-    #  Teams connect
     TeamsTenantId        = 'b33cbe9f-8ebe-4f2a-912b-7e2a427f477f'
-    #  Teams source chat
     TeamsChatId          = '19:b8577894a63548969c5c92bb9c80c5e1@thread.v2'
-    #  Paths
     MarkdownFileName     = 'teams_chat.md'
-    DownloadDir          = 'd:\teams_to_zulip\download'
-    TrIDPathDir          = 'd:\teams_to_zulip\trid'
-    #  Progress
+    DownloadDir          = 'd:\t2md\download'
+    TrIDPathDir          = 'd:\t2md\trid'
     ShowProgress         = $true
   }  
   ConvertFrom-TeamsChatToHtmlFile @ConvertArgs
@@ -189,7 +185,7 @@ function ConvertFrom-TeamsChatToMarkdownFile
                              [ string ] $TeamsEnvironment = $Script:TeamsEnvironment,    
                            [ string[] ] $TeamsDelegatedPermissions = $Script:TeamsDefaultDelegatedPermissions,
     [ Parameter(Mandatory) ] [ string ] $TeamsChatId,
-    [ Parameter(Mandatory) ] [ string ] $MarkdownFileName,
+                             [ string ] $MarkdownFileName,
     [ Parameter(Mandatory) ] [ string ] $DownloadDir,
     [ Parameter(Mandatory) ] [ string ] $TrIDPathDir,
                              [ switch ] $ShowProgress
@@ -239,11 +235,39 @@ function ConvertFrom-TeamsChatToMarkdownFile
     throw "Teams chat message list not found!"
   }  
   
-  if ( -not ( Test-Path -Path "$($DownloadDir)\$($MarkdownFileName)" -PathType 'Leaf' ) )
-  {
+  #  get chat
+  Get-TeamsChat -TenantId $TenantId -TeamsChatId $TeamsChatId  
+  | Where-Object { ( $_.Id ) -and ( $_.ChatType ) }
+  | ForEach-Object { 
+  
+    Write-Verbose -Message "Teams Chat Id : $($_.Id)"
+    
+    if ( -not ( $MarkdownFileName ) )  
+    {
+      $MarkdownFileName = $_.ChatType + '-' + ( ( [System.BitConverter]::ToString( [System.Security.Cryptography.HashAlgorithm]::Create('SHA1').ComputeHash( [System.Text.Encoding]::UTF8.GetBytes( $_.Id ) ) ) ).Replace( '-', '' ).ToLower() ) + '.md'
+    }  
+    
+    Write-Verbose -Message "File name : $($MarkdownFileName)"
+    
     #  create file
-    New-Item -Path "$($DownloadDir)\$($MarkdownFileName)" -ItemType 'File' -Force | Out-Null
-  }  
+    New-Item    -Path "$($DownloadDir)\$($MarkdownFileName)" -ItemType 'File' -Force | Out-Null
+    
+    #  add chat title to file
+    Add-Content -Path "$($DownloadDir)\$($MarkdownFileName)" -Value ( $NewLine + '##### ' + $_.Id )
+    Add-Content -Path "$($DownloadDir)\$($MarkdownFileName)" -Value ( $NewLine + '##### ' + $_.ChatType )
+    Add-Content -Path "$($DownloadDir)\$($MarkdownFileName)" -Value ( $NewLine + '##### ' + $_.Topic )
+    Add-Content -Path "$($DownloadDir)\$($MarkdownFileName)" -Value ( $NewLine + '##### ' + $_.LastUpdatedDateTime.DateTime )
+    
+    #  add chat members to file
+    if ( $_.ChatType -in ( 'group', 'oneOnOne' ) )  
+    { 
+      Add-Content -Path "$($DownloadDir)\$($MarkdownFileName)" -Value 'Members:' 
+      Get-TeamsChatMember -TenantId $TenantId -TeamsChatId $_.Id
+      | ForEach-Object { 
+        Add-Content -Path "$($DownloadDir)\$($MarkdownFileName)" -Value $_.DisplayName 
+      } 
+    }
+  }
   
   #  process message list  
   foreach ( $ChatMessage in $ChatMessageList )
@@ -456,7 +480,7 @@ function ConvertFrom-TeamsChatToMarkdownFile
       
       $ProgressPreference = 'Continue'
       
-      Write-Progress -Activity "Migration in Progress" -Status "$($PercentComplete)% Complete:" -PercentComplete $PercentComplete
+      Write-Progress -Activity "File Creation in Progress" -Status "$($PercentComplete)% Complete:" -PercentComplete $PercentComplete
       
       $ProgressPreference = $ProgressPreferenceCurrent
     }  
