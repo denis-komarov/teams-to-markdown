@@ -56,12 +56,32 @@ D:\t2md\module\TeamsToMarkdown\TeamsToMarkdown.psm1
 b33cbe9f-8ebe-4f2a-912b-7e2a427f477f
 ```
 
-### Well, now you can start transferring messages from Teams to Zulip by running a script like this in the PowerShell console:
+### So, you can save all the chats you participated in to markdown files by running a script like this in the PowerShell console:
 ```powershell
 $env:PSModulePath += ';' + 'd:\t2md\module'
 
 Import-Module -Name 'd:\t2md\module\TeamsToMarkdown'
 
+$ConvertArgs = @{
+  TeamsTenantId    = 'b33cbe9f-8ebe-4f2a-912b-7e2a427f477f'
+  TeamsChatId      = ''
+  MarkdownFileName = ''
+  DownloadDir      = 'd:\t2md\download'
+  TrIDPathDir      = 'd:\t2md\trid'
+  ShowProgress     = $true
+}  
+
+Get-TeamsChat -TenantId $ConvertArgs.TeamsTenantId 
+| Where-Object { ( $_.Id ) -and ( $_.ChatType ) }
+| ForEach-Object { 
+
+  'Chat : ' + $_.ChatType + ' : ' + $_.Id
+  
+  $ConvertArgs.TeamsChatId      = $_.Id
+  
+  ConvertFrom-TeamsChatToMarkdownFile @ConvertArgs 
+  
+}
 ```
 
 ## 3rd party references
